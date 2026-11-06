@@ -37,46 +37,67 @@ def tpl(name, *args):
 
 # ---------------------------------------------------------------- материал
 def make_photo(path, seed, w=W, h=H):
-    """Нейтральный абстрактный кадр: мягкий градиент, крупная форма, зерно.
+    """Нейтральный абстрактный кадр С ГЛУБИНОЙ: небо-градиент, диск светила,
+    три плана силуэтов и дымка между ними.
 
-    Не изображает ничего конкретного — на полке важно, ЧТО делает приём, а
-    не что на фотографии. Так пример не стареет вместе с темой ролика.
+    Первый заход 06.11 рисовал мягкие пятна без структуры — на контактном
+    листе приёмы движения и кадрирования (Ken Burns, рамка, кроссфейд,
+    всплывашка) читались как «пустой градиент»: глазу не за что зацепиться,
+    и не видно ни наезда, ни границы кадра. Поэтому здесь ЕСТЬ линия
+    горизонта и разноудалённые планы — приём на них виден сразу, а
+    содержания по-прежнему никакого: ничего конкретного не изображено.
     """
     from PIL import Image, ImageDraw, ImageFilter
     rnd = random.Random(seed)
-    base = rnd.choice([(54, 62, 78), (72, 58, 48), (46, 66, 60),
-                       (78, 64, 72), (40, 52, 70), (84, 74, 56)])
-    top = tuple(min(255, int(c * 1.75) + 18) for c in base)
-    im = Image.new("RGB", (w, h), base)
+    sky_lo, sky_hi = rnd.choice([
+        ((38, 48, 66), (168, 182, 198)), ((54, 42, 38), (206, 170, 132)),
+        ((30, 46, 48), (150, 184, 180)), ((46, 38, 54), (190, 166, 196)),
+        ((34, 44, 58), (196, 186, 164))])
+    im = Image.new("RGB", (w, h))
     d = ImageDraw.Draw(im)
-    for y in range(h):                      # вертикальный градиент
-        k = y / h
+    for y in range(h):                       # небо
+        k = (y / h) ** 0.75
         d.line([(0, y), (w, y)],
-               fill=tuple(int(top[i] * (1 - k) + base[i] * k) for i in range(3)))
-    for _ in range(3):                      # мягкие пятна света
-        r = rnd.randint(int(h * 0.3), int(h * 0.8))
-        cx, cy = rnd.randint(0, w), rnd.randint(0, h)
-        glow = Image.new("L", (w, h), 0)
-        ImageDraw.Draw(glow).ellipse([cx - r, cy - r, cx + r, cy + r], fill=46)
-        glow = glow.filter(ImageFilter.GaussianBlur(r * 0.45))
-        im = Image.composite(Image.new("RGB", (w, h), top), im, glow)
-    d = ImageDraw.Draw(im, "RGBA")          # одна крупная геометрия
-    for i in range(rnd.randint(2, 4)):
-        x = rnd.randint(-int(w * 0.1), int(w * 0.8))
-        y = rnd.randint(-int(h * 0.1), int(h * 0.7))
-        s = rnd.randint(int(h * 0.25), int(h * 0.7))
-        a = rnd.randint(18, 40)
-        if rnd.random() < 0.5:
-            d.ellipse([x, y, x + s, y + s], outline=(235, 230, 220, a + 40),
-                      width=max(2, s // 90))
-        else:
-            d.rectangle([x, y, x + s, y + int(s * 0.7)], fill=(235, 230, 220, a))
-    im = im.filter(ImageFilter.GaussianBlur(0.6))
-    px = im.load()                          # лёгкое зерно, чтобы не было пластика
+               fill=tuple(int(sky_hi[i] * (1 - k) + sky_lo[i] * k) for i in range(3)))
+
+    sun_x, sun_y = rnd.randint(int(w * 0.2), int(w * 0.8)), rnd.randint(int(h * 0.12), int(h * 0.34))
+    r = rnd.randint(int(h * 0.05), int(h * 0.09))
+    glow = Image.new("L", (w, h), 0)
+    ImageDraw.Draw(glow).ellipse([sun_x - r * 5, sun_y - r * 5, sun_x + r * 5, sun_y + r * 5], fill=70)
+    glow = glow.filter(ImageFilter.GaussianBlur(r * 2.2))
+    im = Image.composite(Image.new("RGB", (w, h), tuple(min(255, c + 60) for c in sky_hi)), im, glow)
+    ImageDraw.Draw(im).ellipse([sun_x - r, sun_y - r, sun_x + r, sun_y + r],
+                               fill=tuple(min(255, c + 46) for c in sky_hi))
+
+    horizon = int(h * rnd.uniform(0.52, 0.64))
+    for layer in range(3):                   # три плана силуэтов, дальний светлее
+        k = 0.30 + 0.28 * layer
+        col = tuple(int(sky_lo[i] * (1 - k) + 14 * k) for i in range(3))
+        base = horizon + int(h * 0.05 * layer)
+        amp = h * (0.16 - 0.04 * layer)
+        step = w // rnd.randint(5, 9)
+        pts = [(0, h), (0, base)]
+        x = 0
+        while x <= w:
+            pts.append((x, base - rnd.uniform(0, amp)))
+            x += step
+        pts += [(w, base), (w, h)]
+        lay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        ImageDraw.Draw(lay).polygon(pts, fill=col + (255,))
+        if layer < 2:
+            lay = lay.filter(ImageFilter.GaussianBlur(2.5 - layer))
+        im = Image.alpha_composite(im.convert("RGBA"), lay).convert("RGB")
+        haze = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        ImageDraw.Draw(haze).rectangle([0, base - int(amp), w, base + int(h * 0.06)],
+                                       fill=sky_hi + (26,))
+        im = Image.alpha_composite(im.convert("RGBA"),
+                                   haze.filter(ImageFilter.GaussianBlur(26))).convert("RGB")
+
+    px = im.load()                           # лёгкое зерно, чтобы не было пластика
     for _ in range(w * h // 70):
         xx, yy = rnd.randrange(w), rnd.randrange(h)
         r0, g0, b0 = px[xx, yy]
-        n = rnd.randint(-12, 12)
+        n = rnd.randint(-10, 10)
         px[xx, yy] = (max(0, min(255, r0 + n)), max(0, min(255, g0 + n)),
                       max(0, min(255, b0 + n)))
     im.save(path, quality=93)
