@@ -147,7 +147,18 @@ def build_captions(srt_path):
 # цветов/шрифтов по индексу, вид роликов не меняется.
 PALETTE_BGR = {"white": "FFFFFF", "yellow": "00E8FF", "red": "1C22FF",
                "green": "5ED62E", "orange": "0A92FF"}
-_NV_FONT_DIR = "/home/andrey/.claude/skills/news-video/template/fonts"
+# ГОЧА 06.11: пути к шрифтам были прописаны АБСОЛЮТНО (/home/andrey/...).
+# На машине автора это работало, в облаке — нет: акцентный заголовок падал
+# с OSError: cannot open resource, и ни один ролик, собранный не здесь, его
+# бы не получил. Теперь оба каталога считаются от самого файла.
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_FONT_DIR = os.path.join(_HERE, "fonts")
+_NV_FONT_DIR = os.path.normpath(
+    os.path.join(_HERE, "..", "..", "news-video", "template", "fonts"))
+if not os.path.isdir(_NV_FONT_DIR):
+    # вне машины автора (облако) соседнего сборщика рядом нет — тогда все
+    # шрифты лежат одной папкой здесь же
+    _NV_FONT_DIR = _FONT_DIR
 FONT_FAMILY = {"default": "", "arial": "Arimo", "times": "Tinos",
                "oswald": "Oswald", "montserrat": "Montserrat",
                "roboto": "Roboto Condensed"}
@@ -192,8 +203,7 @@ _ACCENT_CHAR_STAGGER = 0.035
 
 def build_accents(accents, sfx=None):
     FADE_OUT = 220
-    _PLAYFAIR = ("/home/andrey/.claude/skills/script-to-video/template/fonts/"
-                 "PlayfairDisplay-Regular.ttf")
+    _PLAYFAIR = os.path.join(_FONT_DIR, "PlayfairDisplay-Regular.ttf")
     lines = []
     for i, a in enumerate(accents):
         st, en, text = a["start"], a["end"], a["text"]
@@ -331,8 +341,7 @@ def build_quotes(quotes, sfx=None):
             # кружков: "чтобы буквы как бы плясали" (user, 2026-10-17).
             from PIL import ImageFont
             QF = 70
-            _PF = ("/home/andrey/.claude/skills/script-to-video/template/"
-                   "../../news-video/template/fonts/RobotoCondensed-Bold.ttf")
+            _PF = os.path.join(_NV_FONT_DIR, "RobotoCondensed-Bold.ttf")
             try:
                 qfont = ImageFont.truetype(_PF, QF)
             except OSError:

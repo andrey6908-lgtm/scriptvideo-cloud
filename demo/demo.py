@@ -343,7 +343,8 @@ def main():
     made, missing = [], []
     for _, _, codes in GROUPS:
         for c in codes:
-            f = [x for x in sorted(os.listdir(d["out"])) if x.startswith(c + "_")]
+            f = [x for x in sorted(os.listdir(d["out"]))
+                 if x.startswith(c + "_") and x.endswith(".mp4")]
             if f and dur(os.path.join(d["out"], f[0])) > 0.4:
                 made.append((c, f[0], dur(os.path.join(d["out"], f[0]))))
             else:
