@@ -1,0 +1,75 @@
+# Отрисовка примеров выразительных средств документального сборщика.
+#
+# Один прогон рисует по короткому клипу на каждое средство (коды V* с полки
+# effects-library) и кладёт их релизом. Работа чисто счётная: PIL рисует
+# кадры, ffmpeg кодирует. Ни поиска, ни стока, ни ключей.
+#
+# Содержание примеров СГЕНЕРИРОВАНО на месте (абстрактные кадры, фоны-
+# паттерны) — ни одной чужой фотографии и ни одного куска настоящего ролика
+# в публичный репозиторий не уезжает.
+
+name: demo
+
+on:
+  push:
+    paths: ["job/**"]
+  workflow_dispatch:
+
+concurrency:
+  group: scriptvideo-demo
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  demo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Прочитать задание
+        id: job
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          j = json.load(open("job/job.json", encoding="utf-8"))
+          print("name=" + j["name"])
+          print("codes=" + (j.get("codes") or ""))
+          PY
+
+      # ffmpeg берём из apt, а НЕ из imageio-ffmpeg: рисующим скриптам нужен
+      # ещё и ffprobe (его в imageio-ffmpeg нет) и libass для прожига надписей.
+      # fonts-liberation — метрическая замена Arial/Arial Black из стилей ASS;
+      # без неё fontconfig подставит что попало и надписи поедут.
+      - name: Поставить ffmpeg, шрифты и библиотеки
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg fonts-liberation fonts-dejavu-core
+          pip install --quiet --upgrade numpy pillow
+          ffmpeg -version | head -1
+          ffprobe -version | head -1
+
+      - name: Нарисовать примеры
+        run: |
+          cd demo
+          python3 demo.py "$PWD/../build" ${{ steps.job.outputs.codes }}
+
+      - name: Собрать в архив
+        run: |
+          ls -la build/out
+          cd build/out
+          zip -q -r "../../primery-${{ steps.job.outputs.name }}.zip" .
+          cd ../..
+          ls -la *.zip
+
+      - name: Выложить релизом
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="demo-${{ steps.job.outputs.name }}-${{ github.run_id }}"
+          gh release create "$tag" "primery-${{ steps.job.outputs.name }}.zip" \
+             -R "${{ github.repository }}" -t "$tag" \
+             -n "Примеры выразительных средств документального сборщика."
+          echo "релиз $tag"
